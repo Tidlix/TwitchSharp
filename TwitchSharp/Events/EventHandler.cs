@@ -104,7 +104,6 @@ namespace TwitchSharp.Events
                     request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
                     var response = await httpClient.SendAsync(request);
-                    Console.WriteLine(await response.Content.ReadAsStringAsync());
                 }
             }
             catch
