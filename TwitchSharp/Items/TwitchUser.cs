@@ -35,7 +35,6 @@ namespace TwitchSharp.Items
             try
             {
                 string response = getUserByLoginAsync(user).Result;
-                Console.WriteLine(response);
                 Convert(response);
             }
             catch (Exception ex)
