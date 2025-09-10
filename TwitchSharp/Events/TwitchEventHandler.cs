@@ -1,0 +1,130 @@
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using TwitchSharp.Entitys;
+using TwitchSharp.Events.Types;
+using Websocket.Client;
+
+namespace TwitchSharp.Events
+{
+    public class TwitchEventHandler
+    {
+        private TwitchClient _Client { get; set; }
+        private WebsocketClient _WsClient { get; set; }
+        private string _SessionID { get; set; }
+
+
+        public event Action<TwitchClient, ClientWhiserReceivedArgs>? OnClientWhiserReceived;
+        public event Action<TwitchClient, ChannelChatMessageReceivedArgs>? OnChannelChatMessageReceived;
+        public event Action<TwitchClient, ChannelStreamOnlineArgs>? OnChannelStreamOnline;
+        public event Action<TwitchClient, ChannelStreamOfflineArgs>? OnChannelStreamOffline;
+        public event Action<TwitchClient, ChannelFollowReceicvedArgs>? OnChannelFollowReceived;
+
+        public TwitchEventHandler(TwitchClient client)
+        {
+            _Client = client;
+            _WsClient = new WebsocketClient(new Uri("wss://eventsub.wss.twitch.tv/ws"));
+            _SessionID = "null";
+
+            _WsClient.MessageReceived.Subscribe(msg =>
+            {
+                JsonElement json = JsonDocument.Parse(msg.Text!).RootElement;
+                var metadata = json.GetProperty("metadata");
+                var payload = json.GetProperty("payload");
+
+                string messageType = metadata.GetProperty("message_type").GetString()!;
+                switch (messageType)
+                {
+                    case "session_welcome":
+                        var session = payload.GetProperty("session");
+                        _SessionID = session.GetProperty("id").GetString()!;
+                        TwitchSharpEngine.SendConsole($"WS - Session Welcome with ID \"{_SessionID}\"", TwitchSharpEngine.ConsoleLevel.Debug);
+                        break;
+                    case "session_keepalive":
+                        TwitchSharpEngine.SendConsole("WS - Session Keepalive", TwitchSharpEngine.ConsoleLevel.Trace);
+                        break;
+                    case "notification":
+                        string subType = metadata.GetProperty("subscription_type").GetString()!;
+                        TwitchSharpEngine.SendConsole($"WS - Received Event \"{subType}\"", TwitchSharpEngine.ConsoleLevel.Debug);
+                        switch (subType)
+                        {
+                            case "channel.chat.message":
+                                OnChannelChatMessageReceived?.Invoke(_Client, new ChannelChatMessageReceivedArgs(_Client, payload));
+                                break;
+                            case "channel.follow":
+                                OnChannelFollowReceived?.Invoke(_Client, new ChannelFollowReceicvedArgs(_Client, payload));
+                                break;
+                            case "user.whisper.message":
+                                OnClientWhiserReceived?.Invoke(_Client, new ClientWhiserReceivedArgs(_Client, payload));
+                                break;
+                            case "stream.online":
+                                OnChannelStreamOnline?.Invoke(_Client, new ChannelStreamOnlineArgs(_Client, payload));
+                                break;
+                            case "stream.offline":
+                                OnChannelStreamOffline?.Invoke(_Client, new ChannelStreamOfflineArgs(_Client, payload));
+                                break;
+                        }
+                        break;
+                }
+            });
+            _WsClient.Start().Wait();
+        }
+
+
+        public async Task SubscribeToEventAsync(TwitchEvent twitchEvent)
+        {
+            using (var httpClient = new HttpClient())
+            {
+                string url = "https://api.twitch.tv/helix/eventsub/subscriptions";
+                httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {await _Client.GetUserAccessTokenAsync()}");
+                httpClient.DefaultRequestHeaders.Add("Client-Id", $"{_Client.ClientID}");
+
+                TwitchUser? user = null;
+                bool isBroadcasterEvent = false;
+                bool requiresModeratorRole = false;
+                if (twitchEvent is IIsBroadcasterEvent bTwitchEvent)
+                {
+                    isBroadcasterEvent = true;
+                    user = bTwitchEvent.Broadcaster;
+                    requiresModeratorRole = bTwitchEvent.RequiresModeratorRole;
+                }
+
+                var jsonContent = $@"{{
+                        ""type"": ""{twitchEvent.Type}"",
+                        ""version"": ""{twitchEvent.Version}"",
+                        ""condition"": {{
+                            {(isBroadcasterEvent ? $"\"broadcaster_user_id\": \"{user!.ID}\"," : "")}
+                            {(twitchEvent.RequiresUser ? ((isBroadcasterEvent && requiresModeratorRole) ? "\"moderator_user_id\"" : "\"user_id\"") + $": \"{_Client.CurrentUser.ID}\"" : "")}
+                        }},
+                        ""transport"": {{
+                            ""method"": ""websocket"",
+                            ""session_id"": ""{_SessionID}""
+                        }}
+                    }}";
+
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+                await httpClient.PostAsync(url, content);
+            }
+        }
+
+    }
+
+    public class TwitchEvent
+    {
+        public string Type;
+        public int Version;
+        public bool RequiresUser;
+
+        public TwitchEvent(string type, int version, bool requiresUser)
+        {
+            Type = type;
+            Version = version;
+            RequiresUser = requiresUser;
+        }
+    }
+    public interface IIsBroadcasterEvent
+    {
+        public TwitchUser Broadcaster { get; }
+        public bool RequiresModeratorRole { get; }
+    }
+}
