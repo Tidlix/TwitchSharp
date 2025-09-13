@@ -14,7 +14,7 @@ namespace TwitchSharp.Events
         private string _SessionID { get; set; }
 
 
-        public event Action<TwitchClient, ClientWhiserReceivedArgs>? OnClientWhiserReceived;
+        public event Action<TwitchClient, ClientWhisperReceivedArgs>? OnClientWhisperReceived;
         public event Action<TwitchClient, ChannelChatMessageReceivedArgs>? OnChannelChatMessageReceived;
         public event Action<TwitchClient, ChannelStreamOnlineArgs>? OnChannelStreamOnline;
         public event Action<TwitchClient, ChannelStreamOfflineArgs>? OnChannelStreamOffline;
@@ -26,7 +26,13 @@ namespace TwitchSharp.Events
             _WsClient = new WebsocketClient(new Uri("wss://eventsub.wss.twitch.tv/ws"));
             _SessionID = "null";
 
-            _WsClient.MessageReceived.Subscribe(msg =>
+            SubscribeToEvents(_WsClient);
+            
+            _WsClient.Start().Wait();
+        }
+        private void SubscribeToEvents(WebsocketClient client)
+        {
+            client.MessageReceived.Subscribe(msg =>
             {
                 JsonElement json = JsonDocument.Parse(msg.Text!).RootElement;
                 var metadata = json.GetProperty("metadata");
@@ -43,6 +49,21 @@ namespace TwitchSharp.Events
                     case "session_keepalive":
                         TwitchSharpEngine.SendConsole("WS - Session Keepalive", TwitchSharpEngine.ConsoleLevel.Trace);
                         break;
+                    case "session_reconnect":
+                        string reconnect_url = payload.GetProperty("session").GetProperty("reconnect_url").GetString()!;
+                        WebsocketClient newClient = new WebsocketClient(new Uri(reconnect_url));
+                        _WsClient = newClient;
+                        SubscribeToEvents(_WsClient);
+                        _WsClient.Start().Wait();
+                        TwitchSharpEngine.SendConsole("WS - Reconnected to session!", TwitchSharpEngine.ConsoleLevel.Debug);
+                        break;
+                    case "revocation":
+                        var subscription = payload.GetProperty("subscription");
+                        string type = subscription.GetProperty("type").GetString()!;
+                        string status = subscription.GetProperty("status").GetString()!;
+                        TwitchUser broadcaster = _Client.GetUserByIDAsync(subscription.GetProperty("codition").GetProperty("broadcaster_user_id").GetString()!).Result;
+                        TwitchSharpEngine.SendConsole($"Event Subscription \"{type}\" for {broadcaster.DisplayName} ({broadcaster.ID}) was revoked and will no longer send events! \nStatus: {status}", TwitchSharpEngine.ConsoleLevel.Warning);
+                        break;
                     case "notification":
                         string subType = metadata.GetProperty("subscription_type").GetString()!;
                         TwitchSharpEngine.SendConsole($"WS - Received Event \"{subType}\"", TwitchSharpEngine.ConsoleLevel.Debug);
@@ -55,7 +76,7 @@ namespace TwitchSharp.Events
                                 OnChannelFollowReceived?.Invoke(_Client, new ChannelFollowReceicvedArgs(_Client, payload));
                                 break;
                             case "user.whisper.message":
-                                OnClientWhiserReceived?.Invoke(_Client, new ClientWhiserReceivedArgs(_Client, payload));
+                                OnClientWhisperReceived?.Invoke(_Client, new ClientWhisperReceivedArgs(_Client, payload));
                                 break;
                             case "stream.online":
                                 OnChannelStreamOnline?.Invoke(_Client, new ChannelStreamOnlineArgs(_Client, payload));
@@ -67,7 +88,6 @@ namespace TwitchSharp.Events
                         break;
                 }
             });
-            _WsClient.Start().Wait();
         }
 
 
