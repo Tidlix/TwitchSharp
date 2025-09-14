@@ -3,7 +3,7 @@ using TwitchSharp.Entitys;
 
 namespace TwitchSharp.Events.Types
 {
-    public class ChannelStreamOnlineEvent(TwitchUser broadcaster) : TwitchEvent("stream.offline", 1, false), IIsBroadcasterEvent
+    public class ChannelStreamOnlineEvent(TwitchUser broadcaster) : TwitchEvent("stream.online", 1, false), IIsBroadcasterEvent
     {
         TwitchUser IIsBroadcasterEvent.Broadcaster => broadcaster;
         bool IIsBroadcasterEvent.RequiresModeratorRole => false;
@@ -14,6 +14,7 @@ namespace TwitchSharp.Events.Types
         public string StreamID { get; private set; }
         public string StreamType { get; private set; }
         public string StartedAt { get; private set; }
+        public TwitchStream Stream { get; private set; }
         public ChannelStreamOnlineArgs(TwitchClient client, JsonElement payload)
         {
             var Event = payload.GetProperty("event");
@@ -21,6 +22,7 @@ namespace TwitchSharp.Events.Types
             StreamID = Event.GetProperty("id").GetString()!;
             StreamType = Event.GetProperty("type").GetString()!;
             StartedAt = Event.GetProperty("started_at").GetString()!;
+            Stream = Broadcaster.GetCurrentStream()!;
         }
     }
 }

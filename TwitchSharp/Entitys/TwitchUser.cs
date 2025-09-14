@@ -99,6 +99,15 @@ namespace TwitchSharp.Entitys
             }
         }
         #endregion
+
+        #region Getting
+        public TwitchStream? GetCurrentStream()
+        {
+            TwitchStream? result = null;
+            try { result = new TwitchStream(_Client, this); } catch {}
+            return result;
+        }
+        #endregion
     }
     #region Enums
     public enum TwitchUserType
@@ -106,7 +115,7 @@ namespace TwitchSharp.Entitys
         Admin,      // Twitch Admin
         GlobalMod,  // Twitch Mod
         Staff,      // Twitch Staff
-        Normal      // Not a Twitch member
+        Normal      // Twitch User
     }
     public enum TwitchBroadcasterType
     {

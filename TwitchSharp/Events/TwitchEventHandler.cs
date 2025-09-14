@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -96,8 +97,10 @@ namespace TwitchSharp.Events
             using (var httpClient = new HttpClient())
             {
                 string url = "https://api.twitch.tv/helix/eventsub/subscriptions";
+                
                 httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {await _Client.GetUserAccessTokenAsync()}");
                 httpClient.DefaultRequestHeaders.Add("Client-Id", $"{_Client.ClientID}");
+                
 
                 TwitchUser? user = null;
                 bool isBroadcasterEvent = false;
@@ -113,7 +116,7 @@ namespace TwitchSharp.Events
                         ""type"": ""{twitchEvent.Type}"",
                         ""version"": ""{twitchEvent.Version}"",
                         ""condition"": {{
-                            {(isBroadcasterEvent ? $"\"broadcaster_user_id\": \"{user!.ID}\"," : "")}
+                            {(isBroadcasterEvent ? $"\"broadcaster_user_id\": \"{user!.ID}\"" + (twitchEvent.RequiresUser ? ", " : "") : "")}
                             {(twitchEvent.RequiresUser ? ((isBroadcasterEvent && requiresModeratorRole) ? "\"moderator_user_id\"" : "\"user_id\"") + $": \"{_Client.CurrentUser.ID}\"" : "")}
                         }},
                         ""transport"": {{
@@ -122,8 +125,9 @@ namespace TwitchSharp.Events
                         }}
                     }}";
 
+
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-                await httpClient.PostAsync(url, content);
+                var result = await httpClient.PostAsync(url, content);
             }
         }
 

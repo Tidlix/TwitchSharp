@@ -17,7 +17,7 @@ public class Example
     {
         // You can configure a few things on how TwitchSharp works, by modifying the default values of the TwitchSharpEngine
         TwitchSharpEngine.ModifyEngine(
-            consoleLevel: TwitchSharpEngine.ConsoleLevel.Information,
+            consoleLevel: TwitchSharpEngine.ConsoleLevel.Trace,
             showTime: false,
             showConsoleLevel: false,
             dateTimeFormat: "dd/MM/yyyy - HH:mm:ss"
@@ -62,8 +62,14 @@ public class Example
             Console.WriteLine("msg received: " + e.MessageContent);
             if (e.MessageContent == "!ping") await e.Broadcaster.SendChatMessageAsync("!pong", e.MessageID);
         };
-    
+        EventHandler.OnChannelStreamOnline += async (s, e) =>
+        {
+            await e.Broadcaster.SendChatMessageAsync($"{e.Broadcaster.DisplayName} is now streaming {e.Stream.Title}");
+            Console.WriteLine($"{e.Broadcaster.DisplayName} is now streaming {e.Stream.Title}");
+        };
+
         await EventHandler.SubscribeToEventAsync(new ChannelChatMessageReceivedEvent(me));
+        await EventHandler.SubscribeToEventAsync(new ChannelStreamOnlineEvent(me));
 
         while (true) ; // Keep program running
     }
